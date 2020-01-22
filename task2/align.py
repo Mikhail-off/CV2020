@@ -1,6 +1,6 @@
 import numpy as np
-import skimage
 from skimage.transform import resize
+
 
 MIN_IMAGE_SIZE = 500
 
@@ -23,19 +23,17 @@ def mse(img_1, img_2):
     return ((img_1 - img_2)**2).mean()
 
 
-# return minus
+# возвращаем отрицательное значение, чтобы была задача минимизации
 def cross_corelation(img_1, img_2):
     square_sum_1 = (img_1**2).sum()
     square_sum_2 = (img_2**2).sum()
     return -(img_1 * img_2).sum() / np.sqrt(square_sum_1 * square_sum_2)
 
+
 def find_best_shift(img_1, img_2, metrics, shift_0=(0, 0), shift_range=(-15, 16)):
     assert img_1.shape == img_2.shape
     best_shift = shift_0
     best_metrics = None
-    #return best_shift
-    min_shift = best_shift[0] + shift_range[0]
-    max_shift = best_shift[1] + shift_range[1]
 
     for y_shift in range(shift_0[0] + shift_range[0], shift_0[0] + shift_range[1]):
         for x_shift in range(shift_0[1] + shift_range[0], shift_0[1] + shift_range[1]):
@@ -86,10 +84,8 @@ def align(img, g_coords):
     b_img, g_img, r_img = colored_img[:, :, 0], colored_img[:, :, 1], colored_img[:, :, 2]
 
     metrics = cross_corelation
-    #find_best_shift_pyramid(g_img, r_img)
     r_shift = find_best_shift_pyramid(g_img, r_img, metrics=metrics)
     b_shift = find_best_shift_pyramid(g_img, b_img, metrics=metrics)
-
 
     r_img = roll_image(r_img, shift=r_shift)
     b_img = roll_image(b_img, shift=b_shift)
