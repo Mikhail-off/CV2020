@@ -43,7 +43,7 @@ def check_test(data_dir):
         abs(r_row - gt_r_row) + abs(r_col - gt_r_col)
 
     if diff > diff_max:
-        res = 'Wrong answer'
+        res = 'Wrong answer %d' % diff
     else:
         res = 'Ok'
     if environ.get('CHECKER'):
