@@ -82,7 +82,7 @@ def align(img, g_coords):
     r_img = roll_image(r_img, shift=r_shift)
     b_img = roll_image(b_img, shift=b_shift)
 
-    res_image = np.dstack((r_img, g_img, b_img))
+    res_image = (np.dstack((r_img, g_img, b_img)) * 255).astype(np.uint8)
 
     r_coords = g_coords[0] + height + r_shift[0], g_coords[1] + r_shift[1]
     b_coords = g_coords[0] - height + b_shift[0], g_coords[1] + b_shift[1]
