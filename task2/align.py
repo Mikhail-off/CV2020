@@ -1,7 +1,9 @@
 import numpy as np
+import skimage
+from skimage.transform import resize
 
-MIN_SHIFT = -15
-MAX_SHIFT = 16
+MIN_IMAGE_SIZE = 500
+
 
 def convert_to_coloted_img(img):
     assert len(img.shape) == 2
@@ -27,21 +29,19 @@ def cross_corelation(img_1, img_2):
     square_sum_2 = (img_2**2).sum()
     return -(img_1 * img_2).sum() / np.sqrt(square_sum_1 * square_sum_2)
 
-
-#from PIL import Image
-#from time import sleep
-
-def find_best_shift(img_1, img_2, metrics):
-    best_shift = (0, 0)
+def find_best_shift(img_1, img_2, metrics, shift_0=(0, 0), shift_range=(-15, 16)):
+    assert img_1.shape == img_2.shape
+    best_shift = shift_0
     best_metrics = None
+    #return best_shift
+    min_shift = best_shift[0] + shift_range[0]
+    max_shift = best_shift[1] + shift_range[1]
 
-    #sleep(5)
-    for y_shift in range(MIN_SHIFT, MAX_SHIFT):
-        for x_shift in range(MIN_SHIFT, MAX_SHIFT):
+    for y_shift in range(shift_0[0] + shift_range[0], shift_0[0] + shift_range[1]):
+        for x_shift in range(shift_0[1] + shift_range[0], shift_0[1] + shift_range[1]):
             shifted_img_1 = img_1[max(0, -y_shift): min(img_1.shape[0], img_1.shape[0] - y_shift),
                                           max(0, -x_shift): min(img_1.shape[1], img_1.shape[1] - x_shift)]
 
-            #shifted_img_2 = np.roll(img_2, shift=(y_shift, x_shift))
             shifted_img_2 = img_2[max(0, y_shift): min(img_2.shape[0], img_2.shape[0] + y_shift),
                                           max(0, x_shift): min(img_2.shape[1], img_2.shape[1] + x_shift)]
 
@@ -49,16 +49,26 @@ def find_best_shift(img_1, img_2, metrics):
             if best_metrics is None or cur_metrics < best_metrics:
                 best_metrics = cur_metrics
                 best_shift = (y_shift, x_shift)
-                #shifted_img_1 = img_1
-                #shifted_img_2 = img_2
-                #image_1 = Image.fromarray((shifted_img_1 * 255).astype(np.uint8))
-                #image_2 = Image.fromarray((shifted_img_2 * 255).astype(np.uint8))
-                #image_1.save('D:\\temp\\1.png')
-                #image_2.save('D:\\temp\\2.png')
 
-    #print('finish')
-    #print(best_shift)
-    #sleep(5)
+    return best_shift
+
+
+def find_best_shift_pyramid(img_1, img_2, metrics):
+    assert img_1.shape == img_2.shape
+    cur_image_size = img_1.shape
+    image_sizes = [cur_image_size]
+    while cur_image_size[0] > MIN_IMAGE_SIZE or cur_image_size[1] > MIN_IMAGE_SIZE:
+        cur_image_size = cur_image_size[0] // 2, cur_image_size[1] // 2
+        image_sizes.append(cur_image_size)
+
+    image_sizes = image_sizes[::-1]
+    images = [(resize(img_1, sz), resize(img_2, sz)) for sz in image_sizes]
+
+    best_shift = find_best_shift(images[0][0], images[0][1], metrics)
+    for (img_1, img_2) in images[1:]:
+        best_shift = 2 * best_shift[0], 2 * best_shift[1]
+        best_shift = find_best_shift(img_1, img_2, metrics, shift_0=best_shift, shift_range=(-2, 3))
+
     return best_shift
 
 
@@ -76,8 +86,10 @@ def align(img, g_coords):
     b_img, g_img, r_img = colored_img[:, :, 0], colored_img[:, :, 1], colored_img[:, :, 2]
 
     metrics = cross_corelation
-    r_shift = find_best_shift(g_img, r_img, metrics=metrics)
-    b_shift = find_best_shift(g_img, b_img, metrics=metrics)
+    #find_best_shift_pyramid(g_img, r_img)
+    r_shift = find_best_shift_pyramid(g_img, r_img, metrics=metrics)
+    b_shift = find_best_shift_pyramid(g_img, b_img, metrics=metrics)
+
 
     r_img = roll_image(r_img, shift=r_shift)
     b_img = roll_image(b_img, shift=b_shift)
@@ -86,7 +98,5 @@ def align(img, g_coords):
 
     r_coords = g_coords[0] + height + r_shift[0], g_coords[1] + r_shift[1]
     b_coords = g_coords[0] - height + b_shift[0], g_coords[1] + b_shift[1]
-    #print(b_coords)
-    #print(g_coords)
-    #print(r_coords)
+
     return res_image, b_coords, r_coords
