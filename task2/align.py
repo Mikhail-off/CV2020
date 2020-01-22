@@ -59,8 +59,16 @@ def find_best_shift_pyramid(img_1, img_2, metrics):
         cur_image_size = cur_image_size[0] // 2, cur_image_size[1] // 2
         image_sizes.append(cur_image_size)
 
+    cur_img_1 = img_1
+    cur_img_2 = img_2
+    images = [(img_1, img_2)]
+    for sz in image_sizes[1:]:
+        images += [(resize(cur_img_1, sz), resize(cur_img_2, sz))]
+        cur_img_1, cur_img_2 = images[-1]
+
     image_sizes = image_sizes[::-1]
-    images = [(resize(img_1, sz), resize(img_2, sz)) for sz in image_sizes]
+    images = images[::-1]
+
 
     best_shift = find_best_shift(images[0][0], images[0][1], metrics)
     for (img_1, img_2) in images[1:]:
