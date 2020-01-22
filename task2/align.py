@@ -28,8 +28,8 @@ def cross_corelation(img_1, img_2):
     return -(img_1 * img_2).sum() / np.sqrt(square_sum_1 * square_sum_2)
 
 
-from PIL import Image
-from time import sleep
+#from PIL import Image
+#from time import sleep
 
 def find_best_shift(img_1, img_2, metrics):
     best_shift = (0, 0)
@@ -51,10 +51,10 @@ def find_best_shift(img_1, img_2, metrics):
                 best_shift = (y_shift, x_shift)
                 #shifted_img_1 = img_1
                 #shifted_img_2 = img_2
-                image_1 = Image.fromarray((shifted_img_1 * 255).astype(np.uint8))
-                image_2 = Image.fromarray((shifted_img_2 * 255).astype(np.uint8))
-                image_1.save('D:\\temp\\1.png')
-                image_2.save('D:\\temp\\2.png')
+                #image_1 = Image.fromarray((shifted_img_1 * 255).astype(np.uint8))
+                #image_2 = Image.fromarray((shifted_img_2 * 255).astype(np.uint8))
+                #image_1.save('D:\\temp\\1.png')
+                #image_2.save('D:\\temp\\2.png')
 
     #print('finish')
     #print(best_shift)
