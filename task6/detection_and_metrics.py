@@ -1,4 +1,16 @@
+import keras
+from keras import backend as K
+from keras.layers import Conv2D, MaxPool2D, BatchNormalization, Dense, Activation, Input, Flatten, Dropout
+from keras.models import Model
+from keras.optimizers import Adam
+from keras.preprocessing.image import ImageDataGenerator
+
 # ============================== 1 Classifier model ============================
+
+INPUT_SHAPE = (40, 100, 1)
+LR = 3e-4
+BATCH_SIZE = 64
+EPOCHS = 200
 
 def get_cls_model(input_shape):
     """
@@ -7,9 +19,26 @@ def get_cls_model(input_shape):
     :return: nn model for classification
     """
     # your code here \/
-    from tensorflow.keras.models import Sequential
-    return Sequential()
     # your code here /\
+    inp = Input(shape=INPUT_SHAPE)
+
+    filters = 8
+
+    cur = inp
+    cur = Conv2D(filters, kernel_size=3, activation='relu')(cur)
+    cur = Conv2D(filters, kernel_size=3, activation='relu', strides=2)(cur)
+    cur = Conv2D(2 * filters, kernel_size=3, activation='relu')(cur)
+    cur = Conv2D(2 * filters, kernel_size=3, activation='relu', strides=2)(cur)
+    cur = Conv2D(4 * filters, kernel_size=3, activation='relu')(cur)
+    cur = Conv2D(4 * filters, kernel_size=3, activation='relu', strides=2)(cur)
+    cur = Flatten()(cur)
+    cur = Dense(4 * filters, activation='relu')(cur)
+    cur = Dropout(0.2)(cur)
+    cur = Dense(2, activation='softmax')(cur)
+    model = Model(inputs=inp, outputs=[cur])
+    model.summary()
+    return model
+
 
 def fit_cls_model(X, y):
     """
@@ -17,11 +46,34 @@ def fit_cls_model(X, y):
     :param y: 2-dim ndarray with one-hot labels for training
     :return: trained nn model
     """
-    # your code here \/
+
     model = get_cls_model((40, 100, 1))
-    # model.fit(...)
+    model.compile(loss='binary_crossentropy',
+                  optimizer=Adam(learning_rate=LR),
+                  metrics=["accuracy"])
+
+    image_generator = ImageDataGenerator(horizontal_flip=True,
+                                         brightness_range=(0.8, 1.2),
+                                         rotation_range=10,
+                                         zoom_range=(0.9, 1.1),
+                                         )
+
+    image_generator.flow(X, y)
+    #X, y = next(image_generator.flow(X, y))
+    #import matplotlib.pyplot as plt
+    #plt.imshow(X[0].reshape(INPUT_SHAPE[:-1]), cmap='gray')
+    #plt.waitforbuttonpress()
+
+    image_generator = ImageDataGenerator()
+    image_generator.fit(X)
+
+
+    steps_per_epoch = (len(X)  - 1) // BATCH_SIZE + 1
+    model.fit_generator(image_generator.flow(X, y, batch_size=BATCH_SIZE),
+                        steps_per_epoch=steps_per_epoch,
+                        epochs=EPOCHS)
+    model.save('model.h5')
     return model
-    # your code here /\
 
 
 # ============================ 2 Classifier -> FCN =============================
