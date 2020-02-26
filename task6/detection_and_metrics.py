@@ -10,7 +10,7 @@ from keras.preprocessing.image import ImageDataGenerator
 INPUT_SHAPE = (40, 100, 1)
 LR = 3e-4
 BATCH_SIZE = 64
-EPOCHS = 200
+EPOCHS = 50
 
 def get_cls_model(input_shape):
     """
@@ -53,16 +53,12 @@ def fit_cls_model(X, y):
                   metrics=["accuracy"])
 
     image_generator = ImageDataGenerator(horizontal_flip=True,
-                                         brightness_range=(0.8, 1.2),
-                                         rotation_range=10,
-                                         zoom_range=(0.9, 1.1),
+                                         brightness_range=(0.5, 1.5),
+                                         rotation_range=90,
+                                         zoom_range=(0.7, 1.3),
                                          )
 
     image_generator.flow(X, y)
-    #X, y = next(image_generator.flow(X, y))
-    #import matplotlib.pyplot as plt
-    #plt.imshow(X[0].reshape(INPUT_SHAPE[:-1]), cmap='gray')
-    #plt.waitforbuttonpress()
 
     image_generator = ImageDataGenerator()
     image_generator.fit(X)
@@ -72,7 +68,7 @@ def fit_cls_model(X, y):
     model.fit_generator(image_generator.flow(X, y, batch_size=BATCH_SIZE),
                         steps_per_epoch=steps_per_epoch,
                         epochs=EPOCHS)
-    model.save('model.h5')
+    model.save('classifier_model.h5')
     return model
 
 
