@@ -63,12 +63,11 @@ def fit_cls_model(X, y):
     image_generator = ImageDataGenerator()
     image_generator.fit(X)
 
-
-    steps_per_epoch = (len(X)  - 1) // BATCH_SIZE + 1
+    steps_per_epoch = (len(X) - 1) // BATCH_SIZE + 1
     model.fit_generator(image_generator.flow(X, y, batch_size=BATCH_SIZE),
                         steps_per_epoch=steps_per_epoch,
                         epochs=EPOCHS)
-    model.save('classifier_model.h5')
+    #model.save('classifier_model.h5')
     return model
 
 
@@ -83,6 +82,7 @@ def get_detection_model(cls_model):
     # detection_model = ...
     # return detection_model
     # your code here /\
+    return cls_model
 
 
 # ============================ 3 Simple detector ===============================
@@ -103,13 +103,35 @@ def get_detections(detection_model, dictionary_of_images):
 # =============================== 5 IoU ========================================
 def calc_iou(first_bbox, second_bbox):
     """
-    :param first bbox: bbox in format (row, col, n_rows, n_cols)
+    :param first_bbox: bbox in format (row, col, n_rows, n_cols)
     :param second_bbox: bbox in format (row, col, n_rows, n_cols)
     :return: iou measure for two given bboxes
     """
-    # your code here \/
-    return 1
-    # your code here /\
+    def bbox2quadrangle(bbox):
+        quadrangle = bbox.copy()
+        quadrangle[2] += quadrangle[0]
+        quadrangle[3] += quadrangle[1]
+        return quadrangle
+
+    first_quadrangle = bbox2quadrangle(first_bbox)
+    second_quadrangle = bbox2quadrangle(second_bbox)
+
+    intersection_bbox = [
+        max(first_quadrangle[0], second_quadrangle[0]),
+        max(first_quadrangle[1], second_quadrangle[1]),
+        min(first_quadrangle[2], second_quadrangle[2]),
+        min(first_quadrangle[3], second_quadrangle[3])
+    ]
+
+    def calc_square(bbox):
+        h, w = bbox[2] - bbox[0], bbox[3] - bbox[1]
+        if h <= 0 or w <= 0:
+            return 0
+        return h * w
+
+    intersection_square = calc_square(intersection_bbox)
+    union = calc_square(first_quadrangle) + calc_square(second_quadrangle) - intersection_square
+    return intersection_square / union
 
 
 # =============================== 6 AUC ========================================
