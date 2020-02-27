@@ -1,42 +1,30 @@
 import keras
-from keras import backend as K
-from keras.layers import Conv2D, MaxPool2D, BatchNormalization, Dense, Activation, Input, Flatten, Dropout
-from keras.models import Model
+from keras.layers import Conv2D, MaxPooling2D, Dense, Flatten
+from keras.models import Sequential
 from keras.optimizers import Adam
 from keras.preprocessing.image import ImageDataGenerator
 
 # ============================== 1 Classifier model ============================
-
-INPUT_SHAPE = (40, 100, 1)
-LR = 3e-4
-BATCH_SIZE = 64
-EPOCHS = 50
-
 def get_cls_model(input_shape):
     """
     :param input_shape: tuple (n_rows, n_cols, n_channgels)
             input shape of image for classification
     :return: nn model for classification
     """
-    # your code here \/
-    # your code here /\
-    inp = Input(shape=INPUT_SHAPE)
-
-    filters = 8
-
-    cur = inp
-    cur = Conv2D(filters, kernel_size=3, activation='relu')(cur)
-    cur = Conv2D(filters, kernel_size=3, activation='relu', strides=2)(cur)
-    cur = Conv2D(2 * filters, kernel_size=3, activation='relu')(cur)
-    cur = Conv2D(2 * filters, kernel_size=3, activation='relu', strides=2)(cur)
-    cur = Conv2D(4 * filters, kernel_size=3, activation='relu')(cur)
-    cur = Conv2D(4 * filters, kernel_size=3, activation='relu', strides=2)(cur)
-    cur = Flatten()(cur)
-    cur = Dense(4 * filters, activation='relu')(cur)
-    cur = Dropout(0.2)(cur)
-    cur = Dense(2, activation='softmax')(cur)
-    model = Model(inputs=inp, outputs=[cur])
+    model = Sequential([
+        Conv2D(filters=8, kernel_size=3, activation=None, input_shape=(40, 100, 1)),
+        Conv2D(filters=8, kernel_size=3, activation='relu'),
+        MaxPooling2D(),
+        Conv2D(filters=16, kernel_size=3, activation='relu'),
+        MaxPooling2D(),
+        Conv2D(filters=32, kernel_size=3, activation='relu'),
+        MaxPooling2D(),
+        Flatten(),
+        Dense(64, activation='relu'),
+        Dense(2, activation='softmax')
+    ])
     model.summary()
+    model.compile(loss='binary_crossentropy', optimizer=Adam(learning_rate=1e-4), metrics=["accuracy"])
     return model
 
 
@@ -48,25 +36,13 @@ def fit_cls_model(X, y):
     """
 
     model = get_cls_model((40, 100, 1))
-    model.compile(loss='binary_crossentropy',
-                  optimizer=Adam(learning_rate=LR),
-                  metrics=["accuracy"])
-
-    image_generator = ImageDataGenerator(horizontal_flip=True,
-                                         brightness_range=(0.5, 1.5),
-                                         rotation_range=90,
-                                         zoom_range=(0.7, 1.3),
-                                         )
-
-    image_generator.flow(X, y)
-
-    image_generator = ImageDataGenerator()
+    image_generator = ImageDataGenerator(horizontal_flip=True)
     image_generator.fit(X)
-
-    steps_per_epoch = (len(X) - 1) // BATCH_SIZE + 1
-    model.fit_generator(image_generator.flow(X, y, batch_size=BATCH_SIZE),
+    batch_size = 64
+    steps_per_epoch = (len(X) - 1) // batch_size + 1
+    model.fit_generator(image_generator.flow(X, y, batch_size=batch_size),
                         steps_per_epoch=steps_per_epoch,
-                        epochs=EPOCHS)
+                        epochs=25)
     #model.save('classifier_model.h5')
     return model
 
@@ -101,6 +77,9 @@ def get_detections(detection_model, dictionary_of_images):
 
 
 # =============================== 5 IoU ========================================
+def calc_square(points):
+    return max(0, points[2] - points[0]) * max(0, points[3] - points[1])
+
 def calc_iou(first_bbox, second_bbox):
     """
     :param first_bbox: bbox in format (row, col, n_rows, n_cols)
@@ -113,25 +92,21 @@ def calc_iou(first_bbox, second_bbox):
         quadrangle[3] += quadrangle[1]
         return quadrangle
 
-    first_quadrangle = bbox2quadrangle(first_bbox)
-    second_quadrangle = bbox2quadrangle(second_bbox)
+    first_points = first_bbox.copy()
+    first_points[2] = first_points[2] + first_points[0]
+    first_points[3] = first_points[3] + first_points[1]
+    second_points = second_bbox.copy()
+    second_points[2] = second_bbox[2] + second_bbox[0]
+    second_points[3] = second_bbox[3] + second_bbox[1]
 
-    intersection_bbox = [
-        max(first_quadrangle[0], second_quadrangle[0]),
-        max(first_quadrangle[1], second_quadrangle[1]),
-        min(first_quadrangle[2], second_quadrangle[2]),
-        min(first_quadrangle[3], second_quadrangle[3])
+    I_points = [
+        max(first_points[0], second_points[0]),
+        max(first_points[1], second_points[1]),
+        min(first_points[2], second_points[2]),
+        min(first_points[3], second_points[3])
     ]
 
-    def calc_square(bbox):
-        h, w = bbox[2] - bbox[0], bbox[3] - bbox[1]
-        if h <= 0 or w <= 0:
-            return 0
-        return h * w
-
-    intersection_square = calc_square(intersection_bbox)
-    union = calc_square(first_quadrangle) + calc_square(second_quadrangle) - intersection_square
-    return intersection_square / union
+    return calc_square(I_points) / (calc_square(first_points) + calc_square(first_points) - calc_square(I_points))
 
 
 # =============================== 6 AUC ========================================
