@@ -11,13 +11,12 @@ from keras.models import Model, Sequential, load_model
 from keras.optimizers import Adam
 import os
 from skimage.io import imread, imsave
-#from keras.utils import plot_model
+from keras.utils import plot_model
 
-train_data_path = 'D:\\CV2020\\task7\\tests\\00_test_val_input\\train'
-
+train_data_path = 'C:\\CV2020\\task7\\tests\\00_test_val_input\\train\\'
 model_name = "segmentation_model.hdf5"
 
-BATCH_SIZE = 16
+BATCH_SIZE = 4
 EPOCHS = 20
 LR = 3e-3
 SEED = 42
@@ -59,83 +58,59 @@ def prepare_data_generators(x_data_dir, y_data_dir):
                                                                          color_mode="grayscale")
     train_data_generator = zip(x_generator, y_generator)
 
-    x_length = len(x_generator)
-    assert x_length == len(y_generator)
-    steps_per_epoch = (x_length - 1) // BATCH_SIZE + 1
-    return train_data_generator, steps_per_epoch
+    return train_data_generator
 
 
-def build_model(compiled=True):
-    mobileNet = MobileNetV2(input_shape=INPUT_SHAPE, include_top=False, alpha=ALPHA)
-    mobileNet.summary()
+def UNet():
+    mobileNet = MobileNetV2(input_shape=INPUT_SHAPE, include_top=False, alpha=1.0)
 
-    inp = mobileNet.inputs[0]
-    output = mobileNet.outputs[0]
+    filters = 256
+    cur = mobileNet.outputs[0]
+    cur = UpSampling2D()(cur)
+    cur = Conv2D(filters, 3, padding='same', activation='relu')(cur)
+    cur = Concatenate()([cur, mobileNet.get_layer('block_13_expand_relu').output])
 
-    output_shape = output.get_shape().as_list()[-3:]
+    cur = UpSampling2D()(cur)
+    cur = Conv2D(filters // 2, 3, padding='same', activation='relu')(cur)
+    cur = Concatenate()([cur, mobileNet.get_layer('block_6_expand_relu').output])
 
-    layers_to_concat = []
-    prev_layer = inp
-    for layer in mobileNet.layers[1:]:
-        layer_input = layer.input
-        layer_output = layer.output
+    cur = UpSampling2D()(cur)
+    cur = Conv2D(filters // 4, 3, padding='same', activation='relu')(cur)
+    cur = Concatenate()([cur, mobileNet.get_layer('block_3_expand_relu').output])
 
-        # попали на слой с несколькими входами или выходами
-        if isinstance(layer_input, list) or isinstance(layer_output, list):
-            prev_layer = layer
-            continue
+    cur = UpSampling2D()(cur)
+    cur = Conv2D(filters // 8, 3, padding='same', activation='relu')(cur)
+    cur = Concatenate()([cur, mobileNet.get_layer('block_1_expand_relu').output])
 
-        layer_input_shape = layer_input.get_shape().as_list()[1:3]
-        expected_shape = list(map(lambda x: x // 2, layer_input_shape))
-        layer_output_shape = layer_output.get_shape().as_list()[1:3]
-
-        # надо запомнить слой. Мы тут наткнулись на ZeroPadding, запомнить надо тензор перед ним
-        if expected_shape == layer_output_shape:
-            assert not (isinstance(layer_input, list))
-            layers_to_concat.append(prev_layer.input)
-
-        prev_layer = layer
+    cur = UpSampling2D()(cur)
+    cur = Conv2D(filters // 16, 3, padding='same', activation='relu')(cur)
+    cur = Concatenate()([cur, mobileNet.get_layer('input_1').output])
 
 
-    layers_to_concat = layers_to_concat[::-1]
-    filters = output_shape[-1] // 2
-    kernel = (3, 3)
-    cur_filters = filters
-    cur = output
-    for layer in layers_to_concat:
-        cur_filters //= 2
-        cur = UpSampling2D()(cur)  # x2
-        cur = Conv2D(cur_filters, kernel_size=kernel, padding='same', activation='relu')(cur)
-        cur = Concatenate()([cur, layer])
+    cur = Conv2D(filters // 32, 3, padding='same')(cur)
+    cur = Conv2D(1, 3, padding='same', activation='sigmoid')(cur)
 
-    cur = Conv2D(cur_filters // 2, kernel_size=kernel, padding='same', activation='relu')(cur)
-    cur = Conv2D(1, kernel_size=kernel, padding='same', activation='sigmoid')(cur)
-
-    model = Model(inp, cur)
+    model = Model(mobileNet.inputs[0], cur)
     model.summary()
-    """
-    print('Concated Layers')
-    print(*layers_to_concat, sep='\n')
-    """
-    if compiled:
-        opt = Adam(learning_rate=LR)
-        model.compile(optimizer=opt, loss=['binary_crossentropy'], metrics=['mse', 'mae'])
-    #plot_model(model, 'model.png')
+
+    model.compile(optimizer=Adam(learning_rate=LR), loss=['binary_crossentropy'], metrics=['mse', 'mae'])
 
     return model
 
 
 def train_model(train_data_path):
-    x_data_dir = os.path.join(train_data_path,'images')
-    y_data_dir = os.path.join(train_data_path, 'gt')
-    train_data_generator, steps_per_epoch = prepare_data_generators(x_data_dir, y_data_dir)
+    x_data_dir = train_data_path + 'images\\'
+    y_data_dir = train_data_path + 'gt\\'
+    train_data_generator = prepare_data_generators(x_data_dir, y_data_dir)
+    model = UNet()
 
-    if os.path.exists(model_name):
-        model = load_model(model_name)
-    else:
-        model = build_model()
+    #x_length = len(x_generator)
+    #assert x_length == len(y_generator)
+    #steps_per_epoch = (x_length - 1) // BATCH_SIZE + 1
 
-    model.fit_generator(train_data_generator, steps_per_epoch, epochs=EPOCHS)
+
+
+    model.fit_generator(train_data_generator, steps_per_epoch=8382 // BATCH_SIZE, epochs=EPOCHS)
     model.save(model_name)
     return model
 
