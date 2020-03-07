@@ -81,7 +81,7 @@ def train_model(train_data_path):
     train_data_generator = zip(image_gen, mask_gen)
     model = UNet()
     imgs_count = 8382
-    model.fit_generator(train_data_generator, steps_per_epoch=imgs_count // batch_size, epochs=20)
+    model.fit_generator(train_data_generator, steps_per_epoch=imgs_count // batch_size, epochs=5)
     model.save("segmentation_model.hdf5")
     return model
 
@@ -89,7 +89,7 @@ def train_model(train_data_path):
 def predict(model, img_path):
     img = imread(img_path)
     predict_image = (img - 127.5) / 127.5
-    predict_image = resize(img_as_array, inp_sz)
+    predict_image = resize(predict_image, inp_sz)
     predict_image = np.array([predict_image])
     mask = model.predict(predict_image)[0]
     return unprocess_mask(mask, img.shape[:2])
