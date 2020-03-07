@@ -1,10 +1,10 @@
 # coding=utf-8
 import keras
-from keras.layers import Input, Conv2D, Concatenate, UpSampling2D
+from keras.layers import Conv2D, Concatenate, UpSampling2D, Dropout
 from keras.preprocessing.image import ImageDataGenerator
 
 from keras.applications import MobileNetV2
-from keras.models import Model
+from keras.models import Model, load_model
 from keras.optimizers import Adam
 
 from skimage.io import imread
@@ -26,9 +26,11 @@ def unprocess_mask(mask, shape):
 def UNet():
     mobileNet = MobileNetV2(input_shape=inp_sz, include_top=False, alpha=1.0)
 
+
     filters = 512
     cur = mobileNet.outputs[0]
     cur = UpSampling2D()(cur)
+
     cur = Conv2D(filters, 3, padding='same', activation='relu')(cur)
     cur = Concatenate()([cur, mobileNet.get_layer('block_13_expand_relu').output])
 
@@ -48,7 +50,7 @@ def UNet():
     cur = Conv2D(filters // 16, 3, padding='same', activation='relu')(cur)
     cur = Concatenate()([cur, mobileNet.get_layer('input_1').output])
 
-
+    cur = Dropout(0.2)(cur)
     cur = Conv2D(filters // 32, 3, padding='same')(cur)
     cur = Conv2D(1, 3, padding='same', activation='sigmoid')(cur)
 
@@ -79,9 +81,10 @@ def train_model(train_data_path):
                         color_mode="grayscale")
 
     train_data_generator = zip(image_gen, mask_gen)
-    model = UNet()
+    #model = UNet()
+    model = load_model("segmentation_model.hdf5")
     imgs_count = 8382
-    model.fit_generator(train_data_generator, steps_per_epoch=imgs_count // batch_size, epochs=5)
+    model.fit_generator(train_data_generator, steps_per_epoch=imgs_count // batch_size, epochs=1)
     model.save("segmentation_model.hdf5")
     return model
 
