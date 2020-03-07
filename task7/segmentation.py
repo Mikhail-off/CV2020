@@ -12,7 +12,7 @@ from skimage.transform import resize
 
 import numpy as np
 
-batch_size = 4
+batch_size = 16
 inp_sz = (224, 224, 3)
 
 
@@ -26,7 +26,7 @@ def unprocess_mask(mask, shape):
 def UNet():
     mobileNet = MobileNetV2(input_shape=inp_sz, include_top=False, alpha=1.0)
 
-    filters = 256
+    filters = 128
     cur = mobileNet.outputs[0]
     cur = UpSampling2D()(cur)
     cur = Conv2D(filters, 3, padding='same', activation='relu')(cur)
