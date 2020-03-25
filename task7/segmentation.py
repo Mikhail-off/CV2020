@@ -1,158 +1,101 @@
-import keras
-from keras.layers import Input, Conv2D, Concatenate, BatchNormalization, Dropout, Dense, Flatten,\
-    UpSampling2D, Conv2DTranspose
-from keras import backend as K
-from keras.preprocessing.image import ImageDataGenerator
-import numpy as np
-from tqdm import tqdm
-from keras.applications import MobileNetV2
-from skimage.transform import resize
-from keras.models import Model, Sequential, load_model
-from keras.optimizers import Adam
 import os
-from skimage.io import imread, imsave
-#from keras.utils import plot_model
+import numpy as np
+from skimage.io import imread
+from skimage.transform import resize
+from tensorflow.keras.applications.mobilenet_v2 import MobileNetV2
+from tensorflow.keras.models import *
+from keras.preprocessing.image import ImageDataGenerator
+from tensorflow.keras.layers import *
+from tensorflow.keras.optimizers import Adam
 
-train_data_path = 'D:\\CV2020\\task7\\tests\\00_test_val_input\\train'
+BATCH_SIZE = 4
+IMAGE_SIZE = 224
 
-model_name = "segmentation_model.hdf5"
-
-BATCH_SIZE = 16
-EPOCHS = 20
-LR = 3e-3
-SEED = 42
-INPUT_SHAPE = (224, 224, 3)
-ALPHA = 1.0
-
-
-
-def resize_to_shape(img_as_array, shape=INPUT_SHAPE):
-    h, w = shape[:2]
-
-    if h is not None and w is not None:
-        img_as_array = resize(img_as_array, shape)
-
-    return img_as_array
-
-
-def preprocess_image(img_as_array):
+def normalize_image(img_as_array):
     return (img_as_array - 127.5) / 127.5
 
-
-def deprocess_mask(mask, shape):
-    h, w = shape[:2]
-    if len(mask.shape) == 3:
-        assert mask.shape[-1] == 1
-        mask = mask.reshape(mask.shape[:2])
+def predict(model, img_path):
+    image = imread(img_path)
+    h, w = image.shape[:2]
+    image = normalize_image(image)
+    image = resize(image, (IMAGE_SIZE, IMAGE_SIZE, 3))
+    image_with_batch_dim = np.array([image])
+    pred = model.predict(image_with_batch_dim)[0]
+    if len(pred.shape) == 3:
+        pred = np.reshape(pred, pred.shape[:2])
     if h is not None and w is not None:
-        mask = resize(mask, (h, w))
-        assert mask.shape == (h, w)
-    return mask
+         pred = resize(pred, (h, w))
+    return pred
 
-
-def prepare_data_generators(x_data_dir, y_data_dir):
-    x_generator = ImageDataGenerator(preprocessing_function=preprocess_image).flow_from_directory(x_data_dir, batch_size=BATCH_SIZE, seed=SEED,
-                                                                                                  class_mode=None, target_size=INPUT_SHAPE[:2],
-                                                                                                  color_mode="rgb")
-    y_generator = ImageDataGenerator(rescale=1/255.).flow_from_directory(y_data_dir, batch_size=BATCH_SIZE, seed=SEED,
-                                                                         class_mode=None, target_size=INPUT_SHAPE[:2],
+def data_generators(train_data_dir, gt_data_dir):
+    data_generator = ImageDataGenerator(preprocessing_function=normalize_image).flow_from_directory(train_data_dir, batch_size=BATCH_SIZE,
+                                                              class_mode=None, target_size=(IMAGE_SIZE, IMAGE_SIZE),
+                                                              color_mode="rgb")
+    gt_generator = ImageDataGenerator(rescale=1./255.).flow_from_directory(gt_data_dir, batch_size=BATCH_SIZE,
+                                                                         class_mode=None, target_size=(IMAGE_SIZE, IMAGE_SIZE),
                                                                          color_mode="grayscale")
-    train_data_generator = zip(x_generator, y_generator)
-
-    x_length = len(x_generator)
-    assert x_length == len(y_generator)
-    steps_per_epoch = (x_length - 1) // BATCH_SIZE + 1
-    return train_data_generator, steps_per_epoch
+    train_data_generator = zip(data_generator, gt_generator)
+    train_data_generator = (pair for pair in train_data_generator)
+    return train_data_generator
 
 
-def build_model(compiled=True):
-    mobileNet = MobileNetV2(input_shape=INPUT_SHAPE, include_top=False, alpha=ALPHA)
-    mobileNet.summary()
+def build_model():
+    encoder = MobileNetV2((224, 224, 3), alpha=0.5, include_top=False)
 
-    inp = mobileNet.inputs[0]
-    output = mobileNet.outputs[0]
+    encoder_output = encoder.output
 
-    output_shape = output.get_shape().as_list()[-3:]
+    up6 = Conv2D(512, 2, activation='relu', padding='same', kernel_initializer='he_normal')(
+        UpSampling2D(size=(2, 2))(encoder_output))
+    block14 = encoder.get_layer('block_13_expand_BN').output
+    merge6 = concatenate([block14, up6], axis=3)
+    conv6 = Conv2D(512, 3, activation='relu', padding='same', kernel_initializer='he_normal')(merge6)
+    conv6 = Conv2D(512, 3, activation='relu', padding='same', kernel_initializer='he_normal')(conv6)
 
-    layers_to_concat = []
-    prev_layer = inp
-    for layer in mobileNet.layers[1:]:
-        layer_input = layer.input
-        layer_output = layer.output
+    up7 = Conv2D(256, 2, activation='relu', padding='same', kernel_initializer='he_normal')(
+        UpSampling2D(size=(2, 2))(conv6))
+    block28 = encoder.get_layer('block_6_expand_BN').output
+    merge7 = concatenate([block28, up7], axis=3)
+    conv7 = Conv2D(256, 3, activation='relu', padding='same', kernel_initializer='he_normal')(merge7)
+    conv7 = Conv2D(256, 3, activation='relu', padding='same', kernel_initializer='he_normal')(conv7)
 
-        # попали на слой с несколькими входами или выходами
-        if isinstance(layer_input, list) or isinstance(layer_output, list):
-            prev_layer = layer
-            continue
+    up8 = Conv2D(128, 2, activation='relu', padding='same', kernel_initializer='he_normal')(
+        UpSampling2D(size=(2, 2))(conv7))
+    block56 = encoder.get_layer('block_3_expand_BN').output
+    merge8 = concatenate([block56, up8], axis=3)
+    conv8 = Conv2D(128, 3, activation='relu', padding='same', kernel_initializer='he_normal')(merge8)
+    conv8 = Conv2D(128, 3, activation='relu', padding='same', kernel_initializer='he_normal')(conv8)
 
-        layer_input_shape = layer_input.get_shape().as_list()[1:3]
-        expected_shape = list(map(lambda x: x // 2, layer_input_shape))
-        layer_output_shape = layer_output.get_shape().as_list()[1:3]
+    up9 = Conv2D(64, 2, activation='relu', padding='same', kernel_initializer='he_normal')(
+        UpSampling2D(size=(2, 2))(conv8))
+    block112 = encoder.get_layer('block_1_expand_BN').output
+    merge9 = concatenate([block112, up9], axis=3)
+    conv9 = Conv2D(64, 3, activation='relu', padding='same', kernel_initializer='he_normal')(merge9)
+    conv9 = Conv2D(64, 3, activation='relu', padding='same', kernel_initializer='he_normal')(conv9)
 
-        # надо запомнить слой. Мы тут наткнулись на ZeroPadding, запомнить надо тензор перед ним
-        if expected_shape == layer_output_shape:
-            assert not (isinstance(layer_input, list))
-            layers_to_concat.append(prev_layer.input)
+    up10 = Conv2D(64, 2, activation='relu', padding='same', kernel_initializer='he_normal')(
+        UpSampling2D(size=(2, 2))(conv9))
+    conv10 = Conv2D(64, 3, activation='relu', padding='same', kernel_initializer='he_normal')(up10)
+    conv10 = Conv2D(64, 3, activation='relu', padding='same', kernel_initializer='he_normal')(conv10)
+    conv10 = Conv2D(2, 3, activation='relu', padding='same', kernel_initializer='he_normal')(conv10)
+    conv11 = Conv2D(1, 1, activation='sigmoid')(conv10)
 
-        prev_layer = layer
+    model = Model(encoder.input, conv11)
 
+    model.compile(optimizer=Adam(lr=1e-4), loss='binary_crossentropy', metrics=['accuracy'])
 
-    layers_to_concat = layers_to_concat[::-1]
-    filters = output_shape[-1] // 2
-    kernel = (3, 3)
-    cur_filters = filters
-    cur = output
-    for layer in layers_to_concat:
-        cur_filters //= 2
-        cur = UpSampling2D()(cur)  # x2
-        cur = Conv2D(cur_filters, kernel_size=kernel, padding='same', activation='relu')(cur)
-        cur = Concatenate()([cur, layer])
-
-    cur = Conv2D(cur_filters // 2, kernel_size=kernel, padding='same', activation='relu')(cur)
-    cur = Conv2D(1, kernel_size=kernel, padding='same', activation='sigmoid')(cur)
-
-    model = Model(inp, cur)
     model.summary()
-    """
-    print('Concated Layers')
-    print(*layers_to_concat, sep='\n')
-    """
-    if compiled:
-        opt = Adam(learning_rate=LR)
-        model.compile(optimizer=opt, loss=['binary_crossentropy'], metrics=['mse', 'mae'])
-    #plot_model(model, 'model.png')
 
     return model
 
 
 def train_model(train_data_path):
-    x_data_dir = os.path.join(train_data_path,'images')
-    y_data_dir = os.path.join(train_data_path, 'gt')
-    train_data_generator, steps_per_epoch = prepare_data_generators(x_data_dir, y_data_dir)
-
-    if os.path.exists(model_name):
-        model = load_model(model_name)
-    else:
-        model = build_model()
-
-    model.fit_generator(train_data_generator, steps_per_epoch, epochs=EPOCHS)
-    model.save(model_name)
+    images_train = os.path.join(train_data_path, 'images')
+    gt = os.path.join(train_data_path, 'gt')
+    train_data_generator = data_generators(images_train, gt)
+    model = build_model()
+    model.fit_generator(train_data_generator, steps_per_epoch=524, epochs=7)
     return model
-
-
-def predict(model, img_path):
-    img = imread(img_path)
-    h, w = img.shape[:2]
-    img_as_array = preprocess_image(img)
-    img_as_array = resize_to_shape(img_as_array, INPUT_SHAPE)
-    img_as_array = np.array([img_as_array])
-    mask = model.predict(img_as_array)[0]
-    mask = deprocess_mask(mask, (h, w))
-    return mask
-
-def main():
-    train_model(train_data_path)
-
+    #model.save('segmentation_model.hdf5')
 
 if __name__ == '__main__':
-    main()
+    train_model('C:\\CV2020\\task7\\tests\\00_test_val_input\\train')
